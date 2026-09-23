@@ -1,0 +1,3 @@
+@ischool Moderation
+Student ID: S-D3840
+make message that student enter the session now (late by more than minutes,'note he was absent for previus session and this first session he will attend on it ') should i start as normal 
