@@ -11,7 +11,7 @@ class ChunkModel(BaseDataModel):
         self.collection = self.db_client[DataBaseEnum.COLLECTION_CHUNK_NAME.value]
   
     @classmethod
-    async def create_instace(cls, db_client: object):
+    async def create_instance(cls, db_client: object):
         instance = cls(db_client)
         await instance.init_collection()
         return instance      
