@@ -3,6 +3,7 @@ from enum import Enum
 class LLMEnums(Enum):
     OPENAI = "OPENAI"
     COHERE = "COHERE"
+    GROQ = "GROQ"
 
 class OpenAIEnums(Enum):
     SYSTEM = "system"
@@ -22,3 +23,8 @@ class DocumentTypeEnum(Enum):
     DOCUMENT = "document"
     QUERY = "query"
     
+    
+class GroqEnums(Enum):
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
