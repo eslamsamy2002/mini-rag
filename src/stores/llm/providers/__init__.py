@@ -1,2 +1,3 @@
-from ...providers.CoHereProvider import CoHereProvider
-from ...providers.OpenAIProvider import OpenAIProvider
+from .CohereProvider import CoHereProvider
+from .OpenAIProvider import OpenAIProvider
+from .GroqProvider import GroqProvider
