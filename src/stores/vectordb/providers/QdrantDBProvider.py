@@ -3,6 +3,8 @@ from ..VectorDBInterface import VectorDBInterface
 from ..VectorDBEnums import DistanceMethodEnums
 import logging
 from typing import List
+from models.df_schemes import RetrievedDocument
+
 class QdrantDBProvider(VectorDBInterface):
     
     def __init__(self, db_path: str, distance_method: str):
@@ -67,6 +69,7 @@ class QdrantDBProvider(VectorDBInterface):
                 collection_name = collection_name,
                 records = [
                     models.Record(
+                        id = [record_id],
                         vector = vector,
                         payload = {
                             "text": text, "metadata":metadata
@@ -82,29 +85,31 @@ class QdrantDBProvider(VectorDBInterface):
         return True
     
     def insert_many(self, collection_name: str, texts: list, 
-                              vectors: list, metadata: list = None, 
-                              record_ids: list = None, batch_size: int = 50):
+                    vectors: list, metadata: list = None, 
+                    record_ids: list = None, batch_size: int = 50):
         
         
         if metadata is None:
             metadata = [None] * len(texts)
         
         if record_ids is None:
-            record_ids = [None] * len(texts)
+            record_ids = list(range(0, len(texts)))
             
         for i in range(0, len(texts), batch_size):
-            batch_end =  i + batch_size
-            
+            batch_end = i + batch_size
             batch_texts = texts[i:batch_end]
             batch_vectors = vectors[i:batch_end]
             batch_metadata = metadata[i:batch_end]
+            batch_record_ids = record_ids[i:batch_end]
             
-            batch_records = [
-                models.Record(
-                    vector= batch_vectors[x],
-                    payload = {
+            # Use PointStruct for modern Qdrant
+            batch_points = [
+                models.PointStruct(
+                    id=int(batch_record_ids[x]),
+                    vector=batch_vectors[x],
+                    payload={
                         "text": batch_texts[x],
-                        "metadata":batch_metadata[x]
+                        "metadata": batch_metadata[x]
                     }
                 )
                 
@@ -112,23 +117,42 @@ class QdrantDBProvider(VectorDBInterface):
             ]
 
             try:
-                _ = self.client.upload_records(
-                        collection_name = collection_name,
-                        records = batch_records,
-                        )
+                # Use upload_points instead of upload_records
+                self.client.upload_points(
+                    collection_name=collection_name,
+                    points=batch_points,
+                    wait=True  # Ensures points are committed before continuing
+                )
             except Exception as e:
-                self.logger.error(f"Error while inserting batch:{e}")
+                print(f" QDRANT INSERT ERROR: {e}")  # Prints clearly to terminal
+                self.logger.error(f"Error while inserting batch: {e}")
                 return False
         
         return True
     
-    def search_by_vector(self, collection_name: str, vector: list, limit: int=5):
+    def search_by_vector(self, collection_name: str, vector: list, limit: int = 5):
+        try:
+            response = self.client.query_points(
+                collection_name=collection_name,
+                query=vector,
+                limit=limit
+            )
+            results = response.points
+
+            if not results or len(results) == 0:
+                return None
+
+            return [
+                RetrievedDocument(**{
+                    "score": result.score,
+                    "text": result.payload["text"],
+                })
+                for result in results
+            ]
+        except Exception as e:
+            self.logger.error(f"Error during search: {e}")
+            return None
         
-        return self.client.search(
-            collection_name = collection_name,
-            query_vector = vector,
-            limit = limit
-        )
             
            
 
