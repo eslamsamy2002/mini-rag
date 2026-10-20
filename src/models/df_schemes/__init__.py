@@ -1,3 +1,1 @@
-from .Project import Project
-from .data_chunk import DataChunk, RetrievedDocument
-from .asset import Asset
+from models.df_schemes.ragapp.schemes import Project, DataChunk, Asset, RetrievedDocument
