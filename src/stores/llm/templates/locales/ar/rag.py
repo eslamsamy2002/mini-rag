@@ -2,8 +2,7 @@ from string import Template
 
 #### RAG PROMPTS ####
 
-#### System ####
-
+#### System Prompt ####
 system_prompt = Template("\n".join([
     "أنت مساعد لتوليد رد للمستخدم.",
     "ستحصل على مجموعة من المستندات المرتبطة باستفسار المستخدم.",
@@ -15,7 +14,7 @@ system_prompt = Template("\n".join([
     "كن دقيقًا ومختصرًا في ردك. تجنب المعلومات غير الضرورية.",
 ]))
 
-#### Document ####
+#### Document Chunk Prompt ####
 document_prompt = Template(
     "\n".join([
         "## المستند رقم: $doc_num",
@@ -23,8 +22,9 @@ document_prompt = Template(
     ])
 )
 
-#### Footer ####
+#### Footer Prompt (Includes $query placeholder) ####
 footer_prompt = Template("\n".join([
+    "## استفسار المستخدم: $query",
     "بناءً فقط على المستندات المذكورة أعلاه، يرجى توليد إجابة للمستخدم.",
     "## الإجابة:",
 ]))
