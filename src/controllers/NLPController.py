@@ -2,6 +2,9 @@ from .BaseController import BaseController
 from stores.llm.LLMEnums import DocumentTypeEnum
 from models.df_schemes import Project, DataChunk
 from typing import List, Optional, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 class NLPController(BaseController):
 
@@ -25,19 +28,21 @@ class NLPController(BaseController):
             return obj.__dict__
         return obj
 
-    def create_collection_name(self, project_id: str) -> str:
-        return f"collection_{project_id}".strip()
-
-    def reset_vector_db_collection(self, project: Project):
+    def create_collection_name(self, project_id: str):
+        # Prefer embedding_client size (384) over vectordb default if available
+        size = getattr(self.embedding_client, "embedding_size", self.vectordb_client.default_vector_size)
+        return f"collection_{size}_{project_id}".strip()
+    
+    async def reset_vector_db_collection(self, project: Project):
         collection_name = self.create_collection_name(project_id=project.project_id)
-        return self.vectordb_client.delete_collection(collection_name=collection_name)
+        return await self.vectordb_client.delete_collection(collection_name=collection_name)
 
-    def get_vector_db_collection_info(self, project: Project):
+    async def get_vector_db_collection_info(self, project: Project):
         collection_name = self.create_collection_name(project_id=project.project_id)
-        collection_info = self.vectordb_client.get_collection_info(collection_name=collection_name)
+        collection_info = await self.vectordb_client.get_collection_info(collection_name=collection_name)
         return self._to_dict(collection_info)
 
-    def index_into_vector_db(self, project: Project, chunks: List[DataChunk],
+    async def index_into_vector_db(self, project: Project, chunks: List[DataChunk],
                              chunks_ids: List[int], do_reset: bool = False) -> bool:
         # Step 1: get collection name
         collection_name = self.create_collection_name(project_id=project.project_id)
@@ -59,14 +64,14 @@ class NLPController(BaseController):
             vectors.extend(batch_vectors)
 
         # Step 3: create collection if not exists
-        _ = self.vectordb_client.create_collection(
+        _ = await self.vectordb_client.create_collection(
             collection_name=collection_name,
             embedding_size=self.embedding_client.embedding_size,
             do_reset=do_reset,
         )
 
         # Step 4: insert into vector DB
-        is_inserted = self.vectordb_client.insert_many(
+        is_inserted = await self.vectordb_client.insert_many(
             collection_name=collection_name,
             texts=texts,
             metadata=metadata,
@@ -76,35 +81,52 @@ class NLPController(BaseController):
 
         return is_inserted
 
-    def search_vector_db_collection(self, project: Project, text: str, limit: int = 10):
-        # Step 1: collection name
-        collection_name = self.create_collection_name(project_id=project.project_id)
+    async def search_vector_db_collection(self, project: Project, text: str, limit: int = 10):
+        try:
+            # 1. Collection Name
+            collection_name = self.create_collection_name(project_id=project.project_id)
+            logger.info(f"[NLP DEBUG] Checking collection: '{collection_name}'")
 
-        # Step 2: embed query
-        vector = self.embedding_client.embed_text(
-            text=text,
-            document_type=DocumentTypeEnum.QUERY.value
-        )
-        if not vector:
-            return None
+            # 2. Embedding
+            vectors = self.embedding_client.embed_text(
+                text=text,
+                document_type=DocumentTypeEnum.QUERY.value
+            )
+            
+            if not vectors:
+                logger.error("[NLP DEBUG] Embedding failed: embedding_client returned None or empty")
+                return False
 
-        # Step 3: query vector DB
-        results = self.vectordb_client.search_by_vector(
-            collection_name=collection_name,
-            vector=vector,
-            limit=limit
-        )
+            query_vector = vectors[0] if isinstance(vectors[0], list) else vectors
+            logger.info(f"[NLP DEBUG] Vector embedded successfully (dim: {len(query_vector)})")
 
-        if results is None:
-            return None
+            # 3. Vector DB Search
+            results = await self.vectordb_client.search_by_vector(
+                collection_name=collection_name,
+                vector=query_vector,
+                limit=limit
+            )
 
-        return results
+            if results is False:
+                logger.error(f"[NLP DEBUG] search_by_vector returned False (collection '{collection_name}' likely does not exist)")
+                return False
+
+            if results is None:
+                logger.error("[NLP DEBUG] search_by_vector returned None (database query failed)")
+                return False
+
+            logger.info(f"[NLP DEBUG] Successfully retrieved {len(results)} records")
+            return results
+
+        except Exception as e:
+            logger.exception(f"[NLP DEBUG] Unexpected exception in search: {e}")
+            return False
     
-    def answer_rag_question(self, project: Project, query: str, limit: int = 10):
+    async def answer_rag_question(self, project: Project, query: str, limit: int = 10):
         
         
         # step1: retrieve related documents
-        retrieved_documents = self.search_vector_db_collection(
+        retrieved_documents = await self.search_vector_db_collection(
             project=project,
             text=query,
             limit=limit,
