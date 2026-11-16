@@ -2,7 +2,7 @@ from ..LLMInterface import LLMInterface
 from ..LLMEnums import CohereEnums, DocumentTypeEnum
 import cohere
 import logging
-from typing import List, Optional
+from typing import List, Optional,Union
 
 class CoHereProvider(LLMInterface):
     def __init__(self, api_key: str,
@@ -96,12 +96,41 @@ class CoHereProvider(LLMInterface):
             self.logger.error(f"Error during CoHere batch embedding: {e}")
             return None
     
-    def embed_text(self, text: str, document_type: str = None) -> Optional[List[float]]:
-        """Embeds a single string."""
-        results = self.embed_batch(texts=[text], document_type=document_type)
-        if results and len(results) > 0:
-            return results[0]
-        return None
+    def embed_text(self, text: Union[str, List[str]], document_type: str = None):
+        if not self.client:
+            self.logger.error("CoHere client was not set")
+            return None
+        
+        if not self.embedding_model_id:
+            self.logger.error("Embedding model for CoHere was not set")
+            return None
+
+        if isinstance(text, str):
+            text = [text]
+
+        # Robust input_type resolution matching embed_batch
+        input_type = CohereEnums.DOCUMENT.value if hasattr(CohereEnums.DOCUMENT, 'value') else CohereEnums.DOCUMENT
+        if document_type in [DocumentTypeEnum.QUERY, getattr(DocumentTypeEnum.QUERY, 'value', None)]:
+            input_type = CohereEnums.QUERY.value if hasattr(CohereEnums.QUERY, 'value') else CohereEnums.QUERY
+
+        try:
+            response = self.client.embed(
+                model=self.embedding_model_id,
+                texts=[self.process_text(t) for t in text],
+                input_type=input_type,
+                embedding_types=['float'],
+            )
+
+            if not response or not response.embeddings or not response.embeddings.float:
+                self.logger.error("Error while embedding text with CoHere")
+                return None
+
+            # Return the generated embeddings
+            return response.embeddings.float
+
+        except Exception as e:
+            self.logger.error(f"Error during CoHere text embedding: {e}")
+            return None
         
     def construct_prompt(self, prompt: str, role: str):
         return {
